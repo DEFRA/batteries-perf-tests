@@ -1,4 +1,4 @@
-# cdp-perf-test-suite-template
+# batteries-perf-tests
 
 A JMeter based test runner for the CDP Platform.
 
