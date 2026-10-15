@@ -44,7 +44,14 @@ K6_LOGS=${REPO_LOCATION}/logs
 rm -rf "$K6_RESULTS" "$K6_LOGS"
 mkdir -p "$K6_RESULTS" "$K6_LOGS"
 
-if [ "$TEST_SCENARIO" = "all" ]; then
+if [ "$TEST_SCENARIO" = "baselines" ]; then
+  echo "Running baselines only"
+  scenario_files=$(find "$K6_SCENARIOS" -name "baseline.js" -type f 2>/dev/null | sort)
+  if [ -z "$scenario_files" ]; then
+    echo "No baseline scripts found in $K6_SCENARIOS"
+    exit 1
+  fi
+elif [ "$TEST_SCENARIO" = "all" ]; then
   echo "Running all scenarios"
   scenario_files=$(find "$K6_SCENARIOS" -name "*.js" -type f 2>/dev/null)
   if [ -z "$scenario_files" ]; then
@@ -97,7 +104,7 @@ run_scenario() {
 
 test_exit_code=0
 
-if [ "$TEST_SCENARIO" = "all" ]; then
+if [ "$TEST_SCENARIO" = "all" ] || [ "$TEST_SCENARIO" = "baselines" ]; then
   baseline_files=$(printf '%s\n' $scenario_files | grep '/baseline\.js$' | sort)
   # soak.js is excluded — it runs for 2h alone and would blow the pipeline
   # timeout. Trigger it explicitly with TEST_SCENARIO=<area>/soak.js.
@@ -124,6 +131,7 @@ if [ "$TEST_SCENARIO" = "all" ]; then
     echo "Phase 2/2 — load tests"
     echo "================================================================"
     for script in $load_files; do
+      [ "$TEST_SCENARIO" = "baselines" ] && break
       if ! run_scenario "$script"; then
         test_exit_code=1
       fi

@@ -10,7 +10,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get(`${baseUrl()}/health`, httpParams);
+  const res = http.get(`${baseUrl('registration')}/health`, httpParams);
 
   check(res, {
     'status is 200': (r) => r.status === 200,

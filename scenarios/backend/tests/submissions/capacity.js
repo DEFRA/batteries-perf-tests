@@ -10,7 +10,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get(`${baseUrl()}/health`, httpParams);
+  const res = http.get(`${baseUrl('submissions')}/health`, httpParams);
 
   check(res, {
     'status is 200 or 5xx (observing degradation)': (r) => r.status === 200 || r.status >= 500,
