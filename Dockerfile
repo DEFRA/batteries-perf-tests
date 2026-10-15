@@ -5,6 +5,9 @@ FROM defradigital/cdp-perf-test-docker:latest
 USER root
 COPY --from=k6bin /usr/bin/k6 /usr/local/bin/k6
 
+# jq builds the aggregated results/index.html (table + charts) in entrypoint.sh
+RUN apk add --no-cache jq
+
 WORKDIR /opt/perftest
 
 COPY scenarios/ ./scenarios/
