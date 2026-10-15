@@ -34,3 +34,17 @@ docker run \
 ```
 
 Change which scenario runs with `-e TEST_SCENARIO=<name>`. `entrypoint.sh` and `scenarios/` are baked into the image (see `Dockerfile`), so rebuild after any change. `user.properties` is copied into the image as well.
+
+## k6 migration standards
+
+The JMeter suite (`scenarios/*.jmx`) is being migrated to k6 (branch `feature/EB-219-migrate-jmx-to-k6-perf-tests`). The reference implementation is the sibling repo `waste-obligations-perf-tests` (`scenarios/backend/`); follow its conventions.
+
+- **Layout**: k6 code lives under `backend/`. Shared helpers go in `backend/lib/` (`config.js` provides `baseUrl()`, `httpParams`); tests go in `backend/tests/<area>/<test>.js`. Current areas: `registration`, `submissions`, `obligations`, each with a `health.js` covering `GET /health`.
+- **Scenario types** (reference repo naming): `baseline.js` (1 VU, 1 iteration, smoke gate), `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (local-only, refused under `CI=true`). Load tests use the open model (`constant-arrival-rate`), not closed VU loops.
+- **Config via env**: `ENVIRONMENT` is required; `EPR_BACKEND_BASE_URL` overrides the default `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`. Do not hardcode hosts in tests; import from `lib/config.js`.
+- **Assertions**: every test sets `thresholds` (at minimum `checks: ['rate==1.0']` for baselines, p(95) latency for load tests) and uses `check()` on status and response shape.
+- **Results**: `handleSummary` should write to `results/<area>/<test>` (overridable via `RESULTS_DIR`), emitting HTML, JSON and JUnit like the reference `lib/summary.js`. Not yet ported here.
+- **Run gating**: with `TEST_SCENARIO=all`, run all baselines first and abort before load tests if any fails; `TEST_SCENARIO=<area>/<file>.js` runs a single script.
+- **Still to port**: the k6 Dockerfile/entrypoint, summary/report libs, and CI changes. Until then JMeter remains the runtime in `Dockerfile`/`entrypoint.sh`.
+
+Run a single k6 test locally: `ENVIRONMENT=dev k6 run backend/tests/registration/health.js`.
