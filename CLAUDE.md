@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A JMeter-based performance test suite for the DEFRA CDP Platform, built from the CDP perf-test template. There is no application code: the repo is a JMeter scenario plus a Docker wrapper that runs it and publishes results to S3 for the CDP Portal. The image is based on `defradigital/cdp-perf-test-docker`, which provides `jmeter` and the `aws` CLI.
+A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMeter (EB-219). There is no application code: the repo is a set of k6 scripts plus a Docker wrapper that runs them and publishes results to S3 for the CDP Portal. The image is based on `defradigital/cdp-perf-test-docker` (provides the `aws` CLI) with the k6 binary copied in.
 
 ## Architecture
 
-- `scenarios/*.jmx` — JMeter test plans (XML). `entrypoint.sh` selects one via `TEST_SCENARIO` (default `test`, i.e. `scenarios/test.jmx`). Add new scenarios as `<name>.jmx` and set `TEST_SCENARIO=<name>`.
-- `entrypoint.sh` — container entrypoint. Runs `jmeter -n` headless, passing `-Jenv`, `-Jdomain`, `-Jport`, `-Jprotocol` from env vars (`ENVIRONMENT`, `SERVICE_ENDPOINT`, `SERVICE_PORT`, `SERVICE_URL_SCHEME`), generates the HTML report, then copies the CSV and report to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. It exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or no `index.html` report was produced.
-- The JMX reads those values with `${__P(domain, ...)}`, `${__P(protocol, ...)}`, `${__P(port, ...)}`. Keep the `-J` property names in `entrypoint.sh` and the `__P` names in the JMX in sync.
-- `SERVICE_ENDPOINT` defaults to the placeholder `service-name.${ENVIRONMENT}.cdp-int.defra.cloud` in both `entrypoint.sh` and `test.jmx`; the `service-name` placeholder must be replaced with the real target service in both places (and in `compose.yml`'s `image:`).
-- `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Reports are mounted to `./reports`.
+- `scenarios/backend/tests/<area>/<test>.js` — k6 scripts. Areas: `registration`, `submissions`, `obligations`, each currently with `health.js` (`GET /health`).
+- `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `EPR_BACKEND_BASE_URL` overrides the default `https://service-name.${ENVIRONMENT}.cdp-int.defra.cloud`; the `service-name` placeholder must be replaced with the real service (and in `compose.yml`'s `image:`).
+- `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`) with `k6 run --summary-export`, writes `results/<area>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
+- `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Results are mounted to `./results`.
 - `.github/workflows/publish.yml` — on push to `main`, builds and publishes the Docker image used by the CDP Portal. There is no separate lint or test step.
 
 ## Commands
 
 ```bash
+# Run a single test locally (requires k6)
+ENVIRONMENT=dev k6 run scenarios/backend/tests/registration/health.js
+
 # Build image
 docker build . -t my-performance-tests
 
@@ -33,18 +35,15 @@ docker run \
   my-performance-tests
 ```
 
-Change which scenario runs with `-e TEST_SCENARIO=<name>`. `entrypoint.sh` and `scenarios/` are baked into the image (see `Dockerfile`), so rebuild after any change. `user.properties` is copied into the image as well.
+`entrypoint.sh` and `scenarios/` are baked into the image (see `Dockerfile`), so rebuild after any change.
 
 ## k6 migration standards
 
-The JMeter suite (`scenarios/*.jmx`) is being migrated to k6 (branch `feature/EB-219-migrate-jmx-to-k6-perf-tests`). The reference implementation is the sibling repo `waste-obligations-perf-tests` (`scenarios/backend/`); follow its conventions.
+The reference implementation is the sibling repo `waste-obligations-perf-tests` (`scenarios/backend/`); follow its conventions. All JMeter artefacts (`.jmx`, `user.properties`, `jmeter` invocations) have been removed.
 
-- **Layout**: k6 code lives under `backend/`. Shared helpers go in `backend/lib/` (`config.js` provides `baseUrl()`, `httpParams`); tests go in `backend/tests/<area>/<test>.js`. Current areas: `registration`, `submissions`, `obligations`, each with a `health.js` covering `GET /health`.
+- **Layout**: k6 code lives under `scenarios/backend/`. Shared helpers go in `scenarios/backend/lib/`; tests go in `scenarios/backend/tests/<area>/<test>.js`.
 - **Scenario types** (reference repo naming): `baseline.js` (1 VU, 1 iteration, smoke gate), `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (local-only, refused under `CI=true`). Load tests use the open model (`constant-arrival-rate`), not closed VU loops.
-- **Config via env**: `ENVIRONMENT` is required; `EPR_BACKEND_BASE_URL` overrides the default `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`. Do not hardcode hosts in tests; import from `lib/config.js`.
+- **Config via env**: `ENVIRONMENT` is required. Do not hardcode hosts in tests; import from `lib/config.js`.
 - **Assertions**: every test sets `thresholds` (at minimum `checks: ['rate==1.0']` for baselines, p(95) latency for load tests) and uses `check()` on status and response shape.
-- **Results**: `handleSummary` should write to `results/<area>/<test>` (overridable via `RESULTS_DIR`), emitting HTML, JSON and JUnit like the reference `lib/summary.js`. Not yet ported here.
-- **Run gating**: with `TEST_SCENARIO=all`, run all baselines first and abort before load tests if any fails; `TEST_SCENARIO=<area>/<file>.js` runs a single script.
-- **Still to port**: the k6 Dockerfile/entrypoint, summary/report libs, and CI changes. Until then JMeter remains the runtime in `Dockerfile`/`entrypoint.sh`.
-
-Run a single k6 test locally: `ENVIRONMENT=dev k6 run backend/tests/registration/health.js`.
+- **Results**: the reference writes HTML, JSON and JUnit via `handleSummary` to `results/<area>/<test>` (overridable via `RESULTS_DIR`). Here only `summary.json` via `--summary-export` is produced so far; summary/report libs are not yet ported.
+- **Run gating**: the reference runs all baselines first and aborts before load tests if any fails. Not yet implemented in `entrypoint.sh`.

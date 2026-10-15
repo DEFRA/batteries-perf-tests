@@ -2,7 +2,7 @@ services:
   development:
     build: .
     volumes:
-      - ./reports:/opt/perftest/reports
+      - ./results:/opt/perftest/results
     depends_on:
       service:
         condition: service_healthy
