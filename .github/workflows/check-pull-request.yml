@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   check:
-    name: Validate k6 scripts and image
+    name: Run Pull Request Checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
