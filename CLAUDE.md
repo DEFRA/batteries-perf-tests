@@ -8,7 +8,7 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 
 ## Architecture
 
-- `scenarios/backend/tests/<area>/<test>.js` — k6 scripts. Areas: `registration`, `submissions`, `obligations`, each currently with `health.js` (`GET /health`).
+- `scenarios/backend/tests/<area>/<test>.js` — k6 scripts. Areas: `registration`, `submissions`, `obligations`, each with `baseline.js`, `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (all hit `GET /health` for now).
 - `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `EPR_BACKEND_BASE_URL` overrides the default `https://service-name.${ENVIRONMENT}.cdp-int.defra.cloud`; the `service-name` placeholder must be replaced with the real service (and in `compose.yml`'s `image:`).
 - `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`) with `k6 run --summary-export`, writes `results/<area>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
 - `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Results are mounted to `./results`.
@@ -45,5 +45,5 @@ The reference implementation is the sibling repo `waste-obligations-perf-tests` 
 - **Scenario types** (reference repo naming): `baseline.js` (1 VU, 1 iteration, smoke gate), `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (local-only, refused under `CI=true`). Load tests use the open model (`constant-arrival-rate`), not closed VU loops.
 - **Config via env**: `ENVIRONMENT` is required. Do not hardcode hosts in tests; import from `lib/config.js`.
 - **Assertions**: every test sets `thresholds` (at minimum `checks: ['rate==1.0']` for baselines, p(95) latency for load tests) and uses `check()` on status and response shape.
-- **Results**: the reference writes HTML, JSON and JUnit via `handleSummary` to `results/<area>/<test>` (overridable via `RESULTS_DIR`). Here only `summary.json` via `--summary-export` is produced so far; summary/report libs are not yet ported.
-- **Run gating**: the reference runs all baselines first and aborts before load tests if any fails. Not yet implemented in `entrypoint.sh`.
+- **Results**: `handleSummary` (via `lib/summary.js`) writes HTML, JSON and JUnit to `results/<area>/<test>` (overridable via `RESULTS_DIR`); `entrypoint.sh` builds an aggregated `results/index.html` and uploads results + logs to S3.
+- **Run gating**: `entrypoint.sh` runs all baselines first and aborts before load tests if any fails; `soak.js` is excluded from `all` and refused under `CI=true`.

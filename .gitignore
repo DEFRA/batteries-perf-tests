@@ -12,3 +12,6 @@ coverage
 /allure-results
 report.csv
 reports/
+results/
+logs/
+env.sh

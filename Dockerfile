@@ -14,5 +14,6 @@ RUN chmod +x ./entrypoint.sh
 
 ENV S3_ENDPOINT=https://s3.eu-west-2.amazonaws.com
 ENV TEST_SCENARIO=all
+ENV CI=true
 
 ENTRYPOINT [ "./entrypoint.sh" ]

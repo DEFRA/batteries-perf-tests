@@ -1,6 +1,7 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { baseUrl, httpParams } from '../../lib/config.js';
+import { buildHandleSummary } from '../../lib/summary.js';
 
 export const options = {
   scenarios: {
@@ -24,3 +25,7 @@ export default function () {
     'status is 200': (r) => r.status === 200,
   });
 }
+
+export const handleSummary = buildHandleSummary(
+  __ENV.RESULTS_DIR || 'results/obligations/baseline',
+);
