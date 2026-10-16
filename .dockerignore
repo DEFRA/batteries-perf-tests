@@ -3,5 +3,4 @@ Dockerfile
 .git
 .github
 .husky
-jmeter.log
 reports/

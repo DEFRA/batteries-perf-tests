@@ -1,0 +1,43 @@
+name: Check Pull Request
+
+on:
+  # No `branches` filter so stacked PRs (feature -> feature) are checked too.
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Run Pull Request Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Check shell syntax
+        run: sh -n entrypoint.sh
+
+      # `k6 inspect` parses each script and resolves its imports and options
+      # without sending any requests, so it needs no running service.
+      - name: Inspect k6 scripts
+        env:
+          ENVIRONMENT: perf-test
+        run: |
+          find scenarios/backend/tests -name '*.js' -type f | sort | while read -r script; do
+            echo "Inspecting $script"
+            k6 inspect "$script" > /dev/null || exit 1
+          done
+
+      - name: Build Docker image
+        run: docker build . -t batteries-perf-tests

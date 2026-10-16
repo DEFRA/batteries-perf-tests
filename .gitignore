@@ -10,6 +10,8 @@ coverage
 .png
 /allure-report
 /allure-results
-jmeter.log
 report.csv
 reports/
+results/
+logs/
+env.sh

@@ -1,6 +1,6 @@
 # batteries-perf-tests
 
-A JMeter based test runner for the CDP Platform.
+A k6 based test runner for the CDP Platform.
 
 - [Licence](#licence)
   - [About the licence](#about-the-licence)
@@ -63,7 +63,7 @@ This is the service under test, which must expose a `/health` endpoint and liste
 ### Notes
 
 * S3 bucket is expected to be `s3://test-results`, automatically created inside LocalStack.
-* Logs and reports are written to `./reports` on your host.
+* Logs and reports are written to `./results` on your host.
 * `entrypoint.sh` should contain the logic to wait for dependencies and kick off the test run.
 * The `depends_on` healthchecks ensure services like `localstack` and `service` are ready before tests start.
 * If you make changes to test scripts or entrypoints, rerun with:
