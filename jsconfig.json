@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "ES2020",
+    "target": "ES2020",
+    "moduleResolution": "bundler",
+    "checkJs": false,
+    "types": ["k6"]
+  },
+  "include": ["scenarios/**/*.js"]
+}
