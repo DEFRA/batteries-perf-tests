@@ -64,13 +64,15 @@ export const SOAK = {
   maxVUs: 40,
 };
 
-// Overrides for the create-compliance-declaration write path — each iteration
-// runs POST + PATCH + GET, so needs more headroom than the read endpoints.
+// Overrides for the pom-submissions write path — each iteration runs
+// POST + GET + GET + PATCH + GET. preAllocatedVUs is also the number of stub
+// users (batteries-journey-autotests1..N) signed in during setup(); VUs beyond
+// that share a token.
 export const WRITE_VU_OVERRIDES = {
-  scenarioA: { preAllocatedVUs: 5, maxVUs: 20 },
-  scenarioB: { preAllocatedVUs: 10, maxVUs: 40 },
-  spike: { preAllocatedVUs: 20, maxVUs: 60 },
-  capacity: { preAllocatedVUs: 20, maxVUs: 60 },
+  scenarioA: { preAllocatedVUs: 3, maxVUs: 20 },
+  scenarioB: { preAllocatedVUs: 5, maxVUs: 40 },
+  spike: { preAllocatedVUs: 7, maxVUs: 60 },
+  capacity: { preAllocatedVUs: 10, maxVUs: 60 },
 };
 
 // Reads get shorter durations so the whole TEST_SCENARIO=all pass fits inside

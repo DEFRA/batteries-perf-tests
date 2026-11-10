@@ -9,7 +9,7 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 ## Architecture
 
 - `scenarios/backend/tests/<area>/<test>.js` — k6 scripts. Areas: `registration`, `submissions`, `obligations`, each with `baseline.js`, `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (all hit `GET /health` for now).
-- `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `EPR_BACKEND_BASE_URL` overrides the default `https://service-name.${ENVIRONMENT}.cdp-int.defra.cloud`; the `service-name` placeholder must be replaced with the real service (and in `compose.yml`'s `image:`).
+- `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `<AREA>_BASE_URL` (`REGISTRATION_BASE_URL`, `SUBMISSIONS_BASE_URL`, `OBLIGATIONS_BASE_URL`) overrides the per-service default `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`; with `CDP_API_KEY` set it goes via the ephemeral gateway instead.
 - `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`) with `k6 run --summary-export`, writes `results/<area>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
 - `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Results are mounted to `./results`.
 - `.github/workflows/publish.yml` — on push to `main`, builds and publishes the Docker image used by the CDP Portal. There is no separate lint or test step.

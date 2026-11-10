@@ -99,6 +99,24 @@ my-performance-tests
 docker run -e S3_ENDPOINT='http://host.docker.internal:4566' -e RESULTS_OUTPUT_S3_PATH='s3://cdp-infra-dev-test-results/cdp-portal-perf-tests/95a01432-8f47-40d2-8233-76514da2236a' -e AWS_ACCESS_KEY_ID='test' -e AWS_SECRET_ACCESS_KEY='test' -e AWS_SECRET_KEY='test' -e AWS_REGION='eu-west-2' -e ENVIRONMENT='perf-test' my-performance-tests
 
 
+## Running against a CDP environment
+
+| Where | How the backend is reached |
+|---|---|
+| In CDP (Portal / container) | Directly, at `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`. Leave `CDP_API_KEY` unset. |
+| From a laptop | Set `CDP_API_KEY` (a Developer API key for `ENVIRONMENT`, from your CDP Portal profile). Calls go through `https://ephemeral-protected.api.${ENVIRONMENT}.cdp-int.defra.cloud/<service>` with an `x-api-key` header. |
+
+```bash
+mkdir -p results/submissions/create-pom-submissions/baseline
+CDP_API_KEY=<key> ENVIRONMENT=perf-test k6 run scenarios/backend/tests/submissions/create-pom-submissions/baseline.js
+```
+
+The submissions baseline signs in one Defra ID stub user per VU
+(`batteries-journey-autotests<n>@example.com`, created if missing). `VUS`
+(default 2) sets the number of users. Other overrides: `DEFRA_ID_STUB_URL`,
+`DEFRA_ID_USER_PREFIX`, `DEFRA_ID_CLIENT_SECRET`, `SUBMISSIONS_FRONTEND_URL`,
+per-service `<AREA>_BASE_URL` (`REGISTRATION_BASE_URL`, `SUBMISSIONS_BASE_URL`, `OBLIGATIONS_BASE_URL`).
+
 ## Licence
 
 THIS INFORMATION IS LICENSED UNDER THE CONDITIONS OF THE OPEN GOVERNMENT LICENCE found at:
