@@ -8,9 +8,12 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 
 ## Architecture
 
-- `scenarios/backend/tests/<area>/<test>.js` — k6 scripts. Areas: `registration`, `submissions`, `obligations`, each with `baseline.js`, `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (all hit `GET /health` for now).
+- `scenarios/backend/tests/<area>/<test>.js` — k6 scripts for `registration` and `obligations`, each with `baseline.js`, `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (all hit `GET /health` for now).
+- `scenarios/backend/tests/submissions/create-pom-submissions/<test>.js` — the same six scripts for the submissions backend. Each iteration runs `POST /pom-submissions`, two `GET`s, a `PATCH` (amend) and a final `GET` through `lib/pom-submissions-flow.js`. `setup()` signs in stub users and shares their tokens with the VUs. Requests are tagged by name (`POST`/`PATCH`/`GET /pom-submissions`, all GETs combined) so the report shows durations per endpoint.
+- `scenarios/backend/lib/auth.js` — signs in to the Defra ID stub (`DEFRA_ID_STUB_URL`, default `cdp-defra-id-stub.${ENVIRONMENT}.cdp-int.defra.cloud`) and returns bearer tokens. `getAccessTokens(n)` uses `batteries-journey-autotests<1..n>@example.com`, registering any user the stub doesn't have.
+- `scenarios/backend/lib/load-model.js` — executor options and thresholds. `WRITE_VU_OVERRIDES.<scenario>.preAllocatedVUs` is also how many stub users each submissions test signs in; VUs beyond that share a token. `READ_DURATION_OVERRIDES` (shorter runs) is for read-only tests, not the submissions write flow.
 - `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `<AREA>_BASE_URL` (`REGISTRATION_BASE_URL`, `SUBMISSIONS_BASE_URL`, `OBLIGATIONS_BASE_URL`) overrides the per-service default `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`; with `CDP_API_KEY` set it goes via the ephemeral gateway instead.
-- `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`) with `k6 run --summary-export`, writes `results/<area>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
+- `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`, e.g. `submissions/create-pom-submissions/baseline.js`) with `k6 run --summary-export`, writes `results/<path-under-tests>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
 - `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Results are mounted to `./results`.
 - `.github/workflows/publish.yml` — on push to `main`, builds and publishes the Docker image used by the CDP Portal. There is no separate lint or test step.
 
@@ -18,7 +21,12 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 
 ```bash
 # Run a single test locally (requires k6)
-ENVIRONMENT=dev k6 run scenarios/backend/tests/registration/health.js
+ENVIRONMENT=dev k6 run scenarios/backend/tests/registration/baseline.js
+
+# Submissions baseline from a laptop: CDP_API_KEY routes calls via the ephemeral gateway
+# (leave it unset in CDP). k6 does not create the results folder, so make it first.
+mkdir -p results/submissions/create-pom-submissions/baseline
+CDP_API_KEY=<key> ENVIRONMENT=perf-test k6 run scenarios/backend/tests/submissions/create-pom-submissions/baseline.js
 
 # Build image
 docker build . -t my-performance-tests
@@ -41,9 +49,9 @@ docker run \
 
 The reference implementation is the sibling repo `waste-obligations-perf-tests` (`scenarios/backend/`); follow its conventions. All JMeter artefacts (`.jmx`, `user.properties`, `jmeter` invocations) have been removed.
 
-- **Layout**: k6 code lives under `scenarios/backend/`. Shared helpers go in `scenarios/backend/lib/`; tests go in `scenarios/backend/tests/<area>/<test>.js`.
-- **Scenario types** (reference repo naming): `baseline.js` (1 VU, 1 iteration, smoke gate), `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (local-only, refused under `CI=true`). Load tests use the open model (`constant-arrival-rate`), not closed VU loops.
+- **Layout**: k6 code lives under `scenarios/backend/`. Shared helpers go in `scenarios/backend/lib/`; tests go in `scenarios/backend/tests/<area>/[<feature>/]<test>.js`.
+- **Scenario types** (reference repo naming): `baseline.js` (smoke gate; submissions: `VUS` env, default 1, one iteration per VU, with think time), `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (local-only, refused under `CI=true`). Load tests use the open model (`constant-arrival-rate`), not closed VU loops.
 - **Config via env**: `ENVIRONMENT` is required. Do not hardcode hosts in tests; import from `lib/config.js`.
 - **Assertions**: every test sets `thresholds` (at minimum `checks: ['rate==1.0']` for baselines, p(95) latency for load tests) and uses `check()` on status and response shape.
-- **Results**: `handleSummary` (via `lib/summary.js`) writes HTML, JSON and JUnit to `results/<area>/<test>` (overridable via `RESULTS_DIR`); `entrypoint.sh` builds an aggregated `results/index.html` and uploads results + logs to S3.
+- **Results**: `handleSummary` (via `lib/summary.js`) writes HTML, JSON and JUnit to `results/<path-under-tests>/<test>` (overridable via `RESULTS_DIR`); `entrypoint.sh` builds an aggregated `results/index.html` and uploads results + logs to S3.
 - **Run gating**: `entrypoint.sh` runs all baselines first and aborts before load tests if any fails; `soak.js` is excluded from `all` and refused under `CI=true`.
