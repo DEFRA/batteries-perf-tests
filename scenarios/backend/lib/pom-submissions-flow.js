@@ -88,7 +88,14 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
     if (contentName) {
       checks[contentName] = (r) => (r.status === status ? content(r.json()) : degraded(r));
     }
-    return check(res, checks);
+    const ok = check(res, checks);
+    if (!ok && res.status !== status) {
+      // Say what came back; the report only shows a failed check.
+      console.error(
+        `${statusName}: expected ${status}, got ${res.status} ${res.error || ''} ${String(res.body).slice(0, 300)}`,
+      );
+    }
+    return ok;
   };
 
   // A submission is unique per scheme, member, year and quarter, so use fresh ids.
