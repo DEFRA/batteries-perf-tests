@@ -18,12 +18,16 @@ check_variable "$ENVIRONMENT" "ENVIRONMENT"
 # The CDP Portal only lets you set PROFILE, so it selects what runs:
 # TEST_SCENARIO (local runs) wins, then PROFILE, then everything.
 #   PROFILE=submissions | obligations | baselines | all | <area>/<file>.js
+# The cdp-perf-test-docker base image sets TEST_SCENARIO=test, which is not a
+# real scenario; ignore it so it cannot override PROFILE.
+[ "$TEST_SCENARIO" = "test" ] && TEST_SCENARIO=
 TEST_SCENARIO=${TEST_SCENARIO:-${PROFILE:-all}}
 CI=${CI:-true}
 export ENVIRONMENT
 
 if [ "$CI" = "true" ]; then
   echo "run_id: $RUN_ID in $ENVIRONMENT"
+  echo "profile: ${PROFILE:-<none>} -> running: $TEST_SCENARIO"
 
   # The soak test runs for ~2h and exists to catch memory leaks / connection
   # pool exhaustion during long sustained load. It's intended for local /
