@@ -49,12 +49,14 @@ export const CAPACITY = {
   ],
 };
 
-// 2-hour soak at Scenario A load. Purpose: catch memory leaks and connection
-// pool exhaustion that a short burst test wouldn't reveal.
+// Soak at Scenario A load (2h in the model). Purpose: catch memory leaks and
+// connection pool exhaustion that a short burst test wouldn't reveal. The
+// submissions soak overrides the duration to 1h (see its soak.js) because the
+// Defra ID tokens fetched in setup() would expire during a longer run.
 //
 // LOCAL ONLY — not for the CDP pipeline. Excluded from TEST_SCENARIO=all and
 // hard-blocked by entrypoint.sh when CI=true. Run locally with:
-//   TEST_SCENARIO=create-compliance-declaration/soak.js ./scenarios/backend/entrypoint.sh
+//   TEST_SCENARIO=submissions/create-pom-submissions/soak.js ./entrypoint.sh
 export const SOAK = {
   executor: 'constant-arrival-rate',
   rate: 10,
@@ -64,13 +66,15 @@ export const SOAK = {
   maxVUs: 40,
 };
 
-// Overrides for the create-compliance-declaration write path — each iteration
-// runs POST + PATCH + GET, so needs more headroom than the read endpoints.
+// Overrides for the pom-submissions write path — each iteration runs
+// POST + GET + GET + PATCH + GET. preAllocatedVUs is also the number of stub
+// users (batteries-journey-autotests1..N) signed in during setup(); VUs beyond
+// that share a token.
 export const WRITE_VU_OVERRIDES = {
-  scenarioA: { preAllocatedVUs: 5, maxVUs: 20 },
-  scenarioB: { preAllocatedVUs: 10, maxVUs: 40 },
-  spike: { preAllocatedVUs: 20, maxVUs: 60 },
-  capacity: { preAllocatedVUs: 20, maxVUs: 60 },
+  scenarioA: { preAllocatedVUs: 3, maxVUs: 20 },
+  scenarioB: { preAllocatedVUs: 5, maxVUs: 40 },
+  spike: { preAllocatedVUs: 7, maxVUs: 60 },
+  capacity: { preAllocatedVUs: 10, maxVUs: 60 },
 };
 
 // Reads get shorter durations so the whole TEST_SCENARIO=all pass fits inside
@@ -91,7 +95,7 @@ export const READ_CAPACITY = {
 };
 
 // Derive the http_reqs floor from the configured rate so the threshold cannot
-// go stale like the rate>=19 one on get-compliance-declarations/load.js.
+// go stale when the rate changes.
 function reqsPerSecFloor(ratePerMin) {
   return ((ratePerMin / 60) * 0.95).toFixed(3);
 }
@@ -119,7 +123,7 @@ export const capacityThresholds = {
   checks: ['rate>0.5'],
 };
 
-// Soak runs for 2h — tolerate a handful of transient blips (network hiccups,
+// Soak runs for an hour or more — tolerate a handful of transient blips (network hiccups,
 // brief upstream latency spikes) over that window rather than failing on the
 // first hiccup. p(95) stays at the compliance-critical write-path SLA so a
 // creeping degradation from a leak still trips the run.
