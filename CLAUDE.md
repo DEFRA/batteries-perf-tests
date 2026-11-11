@@ -11,9 +11,9 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 - `scenarios/backend/tests/<area>/<test>.js` — k6 scripts for `registration` and `obligations`, each with `baseline.js`, `scenario-a-load.js`, `scenario-b-stress.js`, `spike.js`, `capacity.js`, `soak.js` (all hit `GET /health` for now).
 - `scenarios/backend/tests/submissions/create-pom-submissions/<test>.js` — the same six scripts for the submissions backend. Each iteration runs `POST /pom-submissions`, two `GET`s, a `PATCH` (amend) and a final `GET` through `lib/pom-submissions-flow.js`. `setup()` signs in stub users and shares their tokens with the VUs. Requests are tagged by name (`POST`/`PATCH`/`GET /pom-submissions`, all GETs combined) so the report shows durations per endpoint.
 - `scenarios/backend/lib/auth.js` — signs in to the Defra ID stub (`DEFRA_ID_STUB_URL`, default `cdp-defra-id-stub.${ENVIRONMENT}.cdp-int.defra.cloud`) and returns bearer tokens. `getAccessTokens(n)` uses `batteries-journey-autotests<1..n>@example.com`, registering any user the stub doesn't have.
-- `scenarios/backend/lib/load-model.js` — executor options and thresholds. `WRITE_VU_OVERRIDES.<scenario>.preAllocatedVUs` is also how many stub users each submissions test signs in; VUs beyond that share a token. `READ_DURATION_OVERRIDES` (shorter runs) is for read-only tests, not the submissions write flow.
+- `scenarios/backend/lib/load-model.js` — executor options and thresholds. `WRITE_VU_OVERRIDES.<scenario>.preAllocatedVUs` is also how many stub users each submissions test signs in; VUs beyond that share a token. `READ_DURATION_OVERRIDES` and `READ_CAPACITY` (shorter runs) are for the read-only `registration` and `obligations` tests, not the submissions write flow.
 - `scenarios/backend/lib/config.js` — `baseUrl()` and `httpParams`. `<AREA>_BASE_URL` (`REGISTRATION_BASE_URL`, `SUBMISSIONS_BASE_URL`, `OBLIGATIONS_BASE_URL`) overrides the per-service default `https://<service>.${ENVIRONMENT}.cdp-int.defra.cloud`; with `CDP_API_KEY` set it goes via the ephemeral gateway instead.
-- `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. Runs every script under `scenarios/backend/tests` (`TEST_SCENARIO=all`, default) or a single one (`TEST_SCENARIO=<area>/<file>.js`, e.g. `submissions/create-pom-submissions/baseline.js`) with `k6 run --summary-export`, writes `results/<path-under-tests>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
+- `entrypoint.sh` — container entrypoint. Requires `ENVIRONMENT`. What runs is chosen by `TEST_SCENARIO`, or by `PROFILE` when `TEST_SCENARIO` is unset (the CDP Portal only offers a profile): every script under `scenarios/backend/tests` (`all`, default), a folder under `tests/` (`TEST_SCENARIO=submissions` — baseline gate first, then the rest, no soak), `TEST_SCENARIO=baselines`, or a single one (`TEST_SCENARIO=<area>/<file>.js`, e.g. `submissions/create-pom-submissions/baseline.js`) with `k6 run --summary-export`, writes `results/<path-under-tests>/<test>/summary.json`, then copies `results/` to `RESULTS_OUTPUT_S3_PATH` via `S3_ENDPOINT`. Exits 1 if `RESULTS_OUTPUT_S3_PATH` is unset or any script fails.
 - `compose.yml` + `compose/` — local stack: the test container, LocalStack (S3 bucket `test-results` created by `compose/localstack/*.sh`), Redis, and the service under test (must expose `/health` on port 3000). Results are mounted to `./results`.
 - `.github/workflows/publish.yml` — on push to `main`, builds and publishes the Docker image used by the CDP Portal. There is no separate lint or test step.
 
@@ -21,7 +21,7 @@ A k6-based performance test suite for the DEFRA CDP Platform, migrated from JMet
 
 ```bash
 # Run a single test locally (requires k6)
-ENVIRONMENT=dev k6 run scenarios/backend/tests/registration/baseline.js
+ENVIRONMENT=dev k6 run scenarios/backend/tests/submissions/create-pom-submissions/baseline.js
 
 # Submissions baseline from a laptop: CDP_API_KEY routes calls via the ephemeral gateway
 # (leave it unset in CDP). k6 does not create the results folder, so make it first.
