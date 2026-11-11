@@ -15,7 +15,10 @@ check_variable() {
 }
 
 check_variable "$ENVIRONMENT" "ENVIRONMENT"
-TEST_SCENARIO=${TEST_SCENARIO:-all}
+# The CDP Portal only lets you set PROFILE, so it selects what runs:
+# TEST_SCENARIO (local runs) wins, then PROFILE, then everything.
+#   PROFILE=submissions | obligations | baselines | all | <area>/<file>.js
+TEST_SCENARIO=${TEST_SCENARIO:-${PROFILE:-all}}
 CI=${CI:-true}
 export ENVIRONMENT
 
@@ -58,6 +61,17 @@ elif [ "$TEST_SCENARIO" = "all" ]; then
     echo "No K6 scripts found in $K6_SCENARIOS"
     exit 1
   fi
+elif [ -d "${K6_SCENARIOS}/${TEST_SCENARIO}" ] && case "$TEST_SCENARIO" in *..*) false ;; esac; then
+  # A folder under tests/, e.g. TEST_SCENARIO=submissions or
+  # TEST_SCENARIO=submissions/create-pom-submissions: run everything in it with
+  # the same baseline gate as `all` (soak.js is still excluded).
+  echo "Running all scenarios under $TEST_SCENARIO"
+  scenario_files=$(find "${K6_SCENARIOS}/${TEST_SCENARIO}" -name "*.js" -type f 2>/dev/null)
+  if [ -z "$scenario_files" ]; then
+    echo "No K6 scripts found in ${K6_SCENARIOS}/${TEST_SCENARIO}"
+    exit 1
+  fi
+  run_phases=1
 else
   scenario_files="${K6_SCENARIOS}/${TEST_SCENARIO}"
   if [ ! -f "$scenario_files" ]; then
@@ -104,7 +118,7 @@ run_scenario() {
 
 test_exit_code=0
 
-if [ "$TEST_SCENARIO" = "all" ] || [ "$TEST_SCENARIO" = "baselines" ]; then
+if [ "$TEST_SCENARIO" = "all" ] || [ "$TEST_SCENARIO" = "baselines" ] || [ "${run_phases:-0}" = "1" ]; then
   baseline_files=$(printf '%s\n' $scenario_files | grep '/baseline\.js$' | sort)
   # soak.js is excluded — it runs for 2h alone and would blow the pipeline
   # timeout. Trigger it explicitly with TEST_SCENARIO=<area>/soak.js.
