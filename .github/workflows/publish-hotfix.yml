@@ -1,0 +1,36 @@
+name: Publish Hot Fix
+
+# Manual only: Actions tab -> "Publish Hot Fix" -> Run workflow, then pick the
+# branch (do not raise a PR). Publishes a prerelease such as
+# 0.3.1-<branch-name>.0 to the same image repository as `publish.yml`, which
+# can then be selected in the CDP Portal. See the CDP docs: how-to/hotfix-builds.
+# This file must exist on both `main` and the branch being built.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-2
+  AWS_ACCOUNT_ID: "094954420758"
+
+jobs:
+  build:
+    name: CDP-build-hotfix-workflow
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Depth 0 required for branch-based versioning
+
+      - name: Publish Hot Fix
+        uses: DEFRA/cdp-build-action/build-hotfix@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
