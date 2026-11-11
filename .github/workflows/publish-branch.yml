@@ -1,0 +1,33 @@
+name: Publish branch (prerelease)
+
+# Manual only: Actions tab -> "Publish branch (prerelease)" -> Run workflow,
+# then pick the branch. Builds the branch and publishes it to the same image
+# repository as `publish.yml`, tagged as an auto-incrementing prerelease
+# (e.g. 0.3.0-beta.1) so it can be run from the CDP Portal without a PR.
+# Releases from `main` still come from `publish.yml`.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  AWS_REGION: eu-west-2
+  AWS_ACCOUNT_ID: "094954420758"
+
+jobs:
+  build:
+    # `main` is published by publish.yml with a normal release version.
+    if: github.ref != 'refs/heads/main'
+    name: Build and publish prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build the test suite (prerelease)
+        uses: DEFRA/cdp-build-action/build-test@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
