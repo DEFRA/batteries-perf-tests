@@ -17,7 +17,8 @@ RUN chmod +x ./entrypoint.sh
 
 ENV S3_ENDPOINT=https://s3.eu-west-2.amazonaws.com
 # TEST_SCENARIO is deliberately not set here: the CDP Portal profile (PROFILE)
-# chooses what runs, and entrypoint.sh falls back to `all`.
+# chooses what runs, and entrypoint.sh falls back to `all`. The base image sets
+# TEST_SCENARIO=test; entrypoint.sh ignores that value.
 ENV CI=true
 
 ENTRYPOINT [ "./entrypoint.sh" ]

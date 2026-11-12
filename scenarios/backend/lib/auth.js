@@ -44,6 +44,13 @@ function authorize(stub, user) {
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
   const login = http.get(`${stub}/authorize?${qs}`, noRedirect);
+  if (login.status >= 500) {
+    // Surface what answered (proxy, ingress or the stub itself) so CDP failures can be diagnosed.
+    console.error(
+      `Defra ID stub ${stub}/authorize -> ${login.status} ${login.error || ''} ` +
+        `server=${login.headers.Server} via=${login.headers.Via} body=${String(login.body).slice(0, 300)}`,
+    );
+  }
   let location = login.headers.Location;
   // Users with an organisation to choose are sent to /organisations first.
   if (location && location.startsWith('/')) {
