@@ -137,3 +137,45 @@ export function soakThresholds(ratePerMin, p95Ms = 1000) {
     dropped_iterations: ['count<20'],
   };
 }
+
+// ---- upsert-batch (150 submissions per call) -------------------------------
+// One iteration is a heavy write: POST /pom-submissions/upsert-batch saves 150
+// submissions in one transaction (about 4s in perf-test) and a GET reads them
+// back. The single-submission rates and limits above would write thousands of
+// rows a minute and could never meet a 1s p95, so the batch tests use their own
+// rates (iterations per minute; multiply by 150 for rows) and limits.
+// preAllocatedVUs is also the number of stub users signed in during setup().
+export const BATCH_SCENARIOS = {
+  scenarioA: { ...SCENARIO_A, rate: 3, preAllocatedVUs: 2, maxVUs: 10 },
+  scenarioB: { ...SCENARIO_B, rate: 12, duration: '10m', preAllocatedVUs: 4, maxVUs: 20 },
+  spike: {
+    ...SPIKE,
+    preAllocatedVUs: 8,
+    maxVUs: 40,
+    stages: [
+      { target: 60, duration: '5s' },
+      { target: 60, duration: '10s' },
+      { target: 0, duration: '5s' },
+      { target: 0, duration: '1m' },
+    ],
+  },
+  capacity: {
+    ...CAPACITY,
+    startRate: 6,
+    preAllocatedVUs: 6,
+    maxVUs: 40,
+    stages: [6, 12, 18, 24, 30, 36].map((target) => ({ target, duration: '2m' })),
+  },
+  soak: { ...SOAK, rate: 3, duration: '1h', preAllocatedVUs: 2, maxVUs: 10 },
+};
+
+// p(95) limits in ms for each batch endpoint.
+export const BATCH_P95_MS = { upsertBatch: 6000, get: 2000 };
+
+// The shared thresholds minus the ones that assume a fast, cheap iteration: the
+// aggregate duration (it would include the Defra ID stub calls in setup(); the
+// per-endpoint limits replace it) and the 3s iteration limit.
+export function batchThresholds(thresholds) {
+  const { http_req_duration: _aggregate, iteration_duration: _iteration, ...rest } = thresholds;
+  return { ...rest, iteration_duration: [`p(95)<${BATCH_P95_MS.upsertBatch + BATCH_P95_MS.get}`] };
+}

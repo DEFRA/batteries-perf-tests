@@ -24,7 +24,7 @@ export function durationThresholds(p95Ms) {
 export const objectId = () =>
   Array.from({ length: 24 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
-function headers(accessToken) {
+export function headers(accessToken) {
   return {
     ...httpParams.headers, // gateway x-api-key, when CDP_API_KEY is set
     'Content-Type': 'application/json',
