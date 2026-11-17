@@ -12,7 +12,7 @@ export const CHEMISTRIES = ['Pb/acid', 'Ni-Cd', 'Others'];
 // Request names used as the `name` tag, so the report shows one duration line each.
 export const NAMES = {
   upsertBatch: 'POST /pom-submissions/upsert-batch',
-  get: 'GET /pom-submissions',
+  get: 'GET /pom-submissions (batch)', // distinct from the create flow's GET /pom-submissions
 };
 
 // Per-endpoint duration thresholds. k6 only reports a tagged duration if a
