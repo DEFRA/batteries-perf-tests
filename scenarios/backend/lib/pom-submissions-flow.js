@@ -20,11 +20,16 @@ export function durationThresholds(p95Ms) {
   );
 }
 
+// The current calendar year and quarter (`Q1` to `Q4`), so the data is always for "now".
+export function currentPeriod(now = new Date()) {
+  return { year: now.getFullYear(), quarter: `Q${Math.floor(now.getMonth() / 3) + 1}` };
+}
+
 // 24 hex characters, the shape of a Mongo ObjectId the backend requires.
 export const objectId = () =>
   Array.from({ length: 24 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
-function headers(accessToken) {
+export function headers(accessToken) {
   return {
     ...httpParams.headers, // gateway x-api-key, when CDP_API_KEY is set
     'Content-Type': 'application/json',
@@ -92,7 +97,7 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
     if (!ok && res.status !== status) {
       // Say what came back; the report only shows a failed check.
       console.error(
-        `${statusName}: expected ${status}, got ${res.status} ${res.error || ''} ${String(res.body).slice(0, 300)}`,
+        `${statusName}: expected ${status}, got ${res.status} ${res.error || ''} www-authenticate=${res.headers['Www-Authenticate']} server=${res.headers.Server} ${String(res.body).slice(0, 300)}`,
       );
     }
     return ok;
@@ -101,7 +106,8 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
   // A submission is unique per scheme, member, year and quarter, so use fresh ids.
   const schemeOrgId = objectId();
   const memberOrgId = objectId();
-  const payload = submissionFor({ schemeOrgId, memberOrgId, year: 2026, quarter: 'Q1' });
+  const { year, quarter } = currentPeriod();
+  const payload = submissionFor({ schemeOrgId, memberOrgId, year, quarter });
 
   const created = http.post(`${base}/pom-submissions`, JSON.stringify(payload), named(NAMES.post));
   verify(created, 201, 'POST /pom-submissions', 'POST returns the submission', (b) =>
@@ -125,7 +131,7 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
   const amended = http.patch(
     `${base}/pom-submissions`,
     JSON.stringify(
-      submissionFor({ schemeOrgId, memberOrgId, year: 2026, quarter: 'Q1', tonnage: [['Alkaline', '99.000']] }),
+      submissionFor({ schemeOrgId, memberOrgId, year, quarter, tonnage: [['Alkaline', '99.000']] }),
     ),
     named(NAMES.patch),
   );
