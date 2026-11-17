@@ -97,7 +97,7 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
     if (!ok && res.status !== status) {
       // Say what came back; the report only shows a failed check.
       console.error(
-        `${statusName}: expected ${status}, got ${res.status} ${res.error || ''} ${String(res.body).slice(0, 300)}`,
+        `${statusName}: expected ${status}, got ${res.status} ${res.error || ''} www-authenticate=${res.headers['Www-Authenticate']} server=${res.headers.Server} ${String(res.body).slice(0, 300)}`,
       );
     }
     return ok;

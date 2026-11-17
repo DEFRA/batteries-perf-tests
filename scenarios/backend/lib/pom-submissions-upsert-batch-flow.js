@@ -82,7 +82,7 @@ export function runUpsertBatchFlow(accessToken, { think = false, observeDegradat
     },
   });
   if (upserted.status !== 200) {
-    if (!degraded(upserted)) console.error(`upsert-batch: expected 200, got ${upserted.status} ${upserted.error || ''} ${String(upserted.body).slice(0, 300)}`);
+    if (!degraded(upserted)) console.error(`upsert-batch: expected 200, got ${upserted.status} ${upserted.error || ''} www-authenticate=${upserted.headers['Www-Authenticate']} server=${upserted.headers.Server} ${String(upserted.body).slice(0, 300)}`);
     return; // nothing to read back
   }
   pause();
@@ -111,7 +111,7 @@ export function runUpsertBatchFlow(accessToken, { think = false, observeDegradat
     },
   });
   if (list.status !== 200 && !degraded(list)) {
-    console.error(`GET after upsert-batch: expected 200, got ${list.status} ${list.error || ''} ${String(list.body).slice(0, 300)}`);
+    console.error(`GET after upsert-batch: expected 200, got ${list.status} ${list.error || ''} www-authenticate=${list.headers['Www-Authenticate']} server=${list.headers.Server} ${String(list.body).slice(0, 300)}`);
   }
   pause();
 }
