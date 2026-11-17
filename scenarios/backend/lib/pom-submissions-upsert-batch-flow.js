@@ -3,7 +3,9 @@ import { check } from 'k6';
 import { baseUrl, httpParams, thinkTime } from './config.js';
 import { currentPeriod, headers, objectId } from './pom-submissions-flow.js';
 
-// Submissions in each POST /pom-submissions/upsert-batch call.
+// Submissions in each POST /pom-submissions/upsert-batch call: about 150 is a
+// typical quarter. A test can ask for more through the batchSize option (the
+// stress test uses the 1000 maximum).
 export const BATCH_SIZE = 150;
 
 // The three chemistries every submission reports tonnage for.
@@ -49,13 +51,16 @@ export function buildBatch(schemeOrgId, period = currentPeriod(), size = BATCH_S
   return Array.from({ length: size }, (_, i) => submissionFor(schemeOrgId, i, period));
 }
 
-// One iteration: upsert a batch of BATCH_SIZE new submissions for one scheme
+// One iteration: upsert a batch of batchSize (default 150) new submissions for one scheme
 // (current year and quarter), then GET the scheme's submissions for that period
 // to confirm they were all saved.
 // think (baseline): pause 0.5-1.5s after each call, like a user would.
 // observeDegradation (capacity test): a 5xx also passes the status checks and is
 // not logged, so the run keeps going and shows where the service starts to degrade.
-export function runUpsertBatchFlow(accessToken, { think = false, observeDegradation = false } = {}) {
+export function runUpsertBatchFlow(
+  accessToken,
+  { think = false, observeDegradation = false, batchSize = BATCH_SIZE } = {},
+) {
   const base = baseUrl('submissions');
   const params = { ...httpParams, headers: headers(accessToken) };
   const named = (name) => ({ ...params, tags: { name } });
@@ -67,16 +72,16 @@ export function runUpsertBatchFlow(accessToken, { think = false, observeDegradat
 
   const period = currentPeriod();
   const schemeOrgId = objectId();
-  const batch = buildBatch(schemeOrgId, period);
+  const batch = buildBatch(schemeOrgId, period, batchSize);
 
   const upserted = http.post(`${base}/pom-submissions/upsert-batch`, JSON.stringify(batch), named(NAMES.upsertBatch));
   check(upserted, {
     [`upsert-batch status is 200${label}`]: (r) => r.status === 200 || degraded(r),
-    [`upsert-batch returns ${BATCH_SIZE} results, all Created`]: (r) => {
+    [`upsert-batch returns ${batchSize} results, all Created`]: (r) => {
       if (r.status !== 200) return degraded(r);
       const results = r.json();
       return (
-        results.length === BATCH_SIZE &&
+        results.length === batchSize &&
         results.every((x, i) => x.requestIndex === i && x.action === 'Created' && x.schemeOrgId === schemeOrgId)
       );
     },
@@ -95,11 +100,11 @@ export function runUpsertBatchFlow(accessToken, { think = false, observeDegradat
   );
   check(list, {
     [`GET after upsert-batch status is 200${label}`]: (r) => r.status === 200 || degraded(r),
-    [`GET after upsert-batch has ${BATCH_SIZE} submissions with 3 tonnage entries`]: (r) => {
+    [`GET after upsert-batch has ${batchSize} submissions with 3 tonnage entries`]: (r) => {
       if (r.status !== 200) return degraded(r);
       const b = r.json();
       return (
-        b.totalCount === BATCH_SIZE &&
+        b.totalCount === batchSize &&
         b.items.length > 0 &&
         b.items.every(
           (s) =>
