@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { baseUrl, httpParams, thinkTime } from './config.js';
-import { headers, objectId } from './pom-submissions-flow.js';
+import { currentPeriod, headers, objectId } from './pom-submissions-flow.js';
 
 // Submissions in each POST /pom-submissions/upsert-batch call.
 export const BATCH_SIZE = 150;
@@ -25,11 +25,6 @@ export function durationThresholds(p95Ms) {
       [p95Ms === undefined ? 'max>=0' : `p(95)<${p95Ms[key]}`],
     ]),
   );
-}
-
-// The current calendar year and quarter, so the data is always for "now".
-export function currentPeriod(now = new Date()) {
-  return { year: now.getFullYear(), quarter: `Q${Math.floor(now.getMonth() / 3) + 1}` };
 }
 
 const tonnes = () => (Math.random() * 99 + 1).toFixed(3); // matches ^\d+\.\d{3}$
