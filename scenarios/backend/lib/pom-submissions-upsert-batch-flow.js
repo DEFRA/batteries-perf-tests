@@ -2,6 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { baseUrl, httpParams, thinkTime } from './config.js';
 import { currentPeriod, headers, objectId } from './pom-submissions-flow.js';
+import { sendWithReauth } from './session.js';
 
 // Submissions in each POST /pom-submissions/upsert-batch call: about 150 is a
 // typical quarter. A test can ask for more through the batchSize option (the
@@ -58,12 +59,21 @@ export function buildBatch(schemeOrgId, period = currentPeriod(), size = BATCH_S
 // observeDegradation (capacity test): a 5xx also passes the status checks and is
 // not logged, so the run keeps going and shows where the service starts to degrade.
 export function runUpsertBatchFlow(
-  accessToken,
+  _accessToken,
   { think = false, observeDegradation = false, batchSize = BATCH_SIZE } = {},
 ) {
   const base = baseUrl('submissions');
-  const params = { ...httpParams, headers: headers(accessToken) };
-  const named = (name) => ({ ...params, tags: { name } });
+  // Every call goes through sendWithReauth, which uses the VU's current token and signs
+  // in again after a 401 (see session.js). _accessToken is only what tokenForVu() returned.
+  const call = (name, method, path, body) =>
+    sendWithReauth((token, extra) =>
+      http.request(method, `${base}${path}`, body, {
+        ...httpParams,
+        headers: headers(token),
+        tags: { name },
+        ...extra,
+      }),
+    );
   const pause = () => {
     if (think) thinkTime();
   };
@@ -74,7 +84,7 @@ export function runUpsertBatchFlow(
   const schemeOrgId = objectId();
   const batch = buildBatch(schemeOrgId, period, batchSize);
 
-  const upserted = http.post(`${base}/pom-submissions/upsert-batch`, JSON.stringify(batch), named(NAMES.upsertBatch));
+  const upserted = call(NAMES.upsertBatch, 'POST', '/pom-submissions/upsert-batch', JSON.stringify(batch));
   check(upserted, {
     [`upsert-batch status is 200${label}`]: (r) => r.status === 200 || degraded(r),
     [`upsert-batch returns ${batchSize} results, all Created`]: (r) => {
@@ -93,10 +103,11 @@ export function runUpsertBatchFlow(
   pause();
 
   // The list is paged, so check the total and the first page, not every item.
-  const list = http.get(
-    `${base}/pom-submissions?schemeOrgId=${schemeOrgId}` +
+  const list = call(
+    NAMES.get,
+    'GET',
+    `/pom-submissions?schemeOrgId=${schemeOrgId}` +
       `&compliancePeriodYears=${period.year}&compliancePeriodQuarters=${encodeURIComponent(period.quarter)}`,
-    named(NAMES.get),
   );
   check(list, {
     [`GET after upsert-batch status is 200${label}`]: (r) => r.status === 200 || degraded(r),
