@@ -1,6 +1,10 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { baseUrl, httpParams, thinkTime } from './config.js';
+import { sendWithReauth, tokenForVu } from './session.js';
+
+// The current VU's token, replaced after a sign-in that follows a 401 (see session.js).
+export { tokenForVu };
 
 // Request names used as the `name` tag; each gets its own duration line in the
 // report, and the unique ids in the URLs don't create a metric per request.
@@ -63,22 +67,25 @@ const submissionFor = ({
   })),
 });
 
-// Token for the current VU. tokens come from getAccessTokens() in setup(); VUs
-// beyond tokens.length (arrival-rate executors) wrap around and reuse one.
-export function tokenForVu(tokens) {
-  return tokens[(__VU - 1) % tokens.length];
-}
-
 // One iteration: POST a submission, GET it by scheme and by member, PATCH it
 // (amend), then GET again to confirm only the new version is current.
 //
 // observeDegradation (capacity test): a 5xx also passes the status checks so
 // the run keeps going and shows where the service starts to degrade.
 // think (baseline): pause 0.5-1.5s after each call, like a user would.
-export function runPomSubmissionsFlow(accessToken, { observeDegradation = false, think = false } = {}) {
+export function runPomSubmissionsFlow(_accessToken, { observeDegradation = false, think = false } = {}) {
   const base = baseUrl('submissions');
-  const params = { ...httpParams, headers: headers(accessToken) };
-  const named = (name) => ({ ...params, tags: { name } });
+  // Every call goes through sendWithReauth, which uses the VU's current token and signs
+  // in again after a 401. _accessToken is the token tokenForVu() returned for this iteration.
+  const call = (name, method, path, body) =>
+    sendWithReauth((token, extra) =>
+      http.request(method, `${base}${path}`, body, {
+        ...httpParams,
+        headers: headers(token),
+        tags: { name },
+        ...extra,
+      }),
+    );
   const label = observeDegradation ? ' or 5xx (observing degradation)' : '';
   const degraded = (r) => observeDegradation && r.status >= 500;
   const pause = () => {
@@ -109,18 +116,18 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
   const { year, quarter } = currentPeriod();
   const payload = submissionFor({ schemeOrgId, memberOrgId, year, quarter });
 
-  const created = http.post(`${base}/pom-submissions`, JSON.stringify(payload), named(NAMES.post));
+  const created = call(NAMES.post, 'POST', '/pom-submissions', JSON.stringify(payload));
   verify(created, 201, 'POST /pom-submissions', 'POST returns the submission', (b) =>
     b.schemeOrgId === schemeOrgId && b.memberOrgId === memberOrgId);
   pause();
   if (created.status !== 201) return; // nothing to read or amend
 
-  const byScheme = http.get(`${base}/pom-submissions?schemeOrgId=${schemeOrgId}`, named(NAMES.get));
+  const byScheme = call(NAMES.get, 'GET', `/pom-submissions?schemeOrgId=${schemeOrgId}`);
   verify(byScheme, 200, 'GET by schemeOrgId', 'GET by schemeOrgId returns the submission', (b) =>
     b.totalCount === 1 && b.items.length === 1 && b.items[0].memberOrgId === memberOrgId);
   pause();
 
-  const byMember = http.get(`${base}/pom-submissions?memberOrgId=${memberOrgId}`, named(NAMES.get));
+  const byMember = call(NAMES.get, 'GET', `/pom-submissions?memberOrgId=${memberOrgId}`);
   verify(byMember, 200, 'GET by memberOrgId', 'GET by memberOrgId returns the submission', (b) =>
     b.totalCount === 1 && b.items.length === 1 && b.items[0].schemeOrgId === schemeOrgId);
   pause();
@@ -128,12 +135,13 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
   // PATCH replaces the current submission for the key with a new version that
   // links back to the one it supersedes. Same body shape as create.
   const v1 = created.json();
-  const amended = http.patch(
-    `${base}/pom-submissions`,
+  const amended = call(
+    NAMES.patch,
+    'PATCH',
+    '/pom-submissions',
     JSON.stringify(
       submissionFor({ schemeOrgId, memberOrgId, year, quarter, tonnage: [['Alkaline', '99.000']] }),
     ),
-    named(NAMES.patch),
   );
   verify(amended, 200, 'PATCH /pom-submissions', 'PATCH creates a new current version linked to the old one', (b) =>
     b.version === 2 &&
@@ -145,7 +153,7 @@ export function runPomSubmissionsFlow(accessToken, { observeDegradation = false,
   pause();
   if (amended.status !== 200) return;
 
-  const afterAmend = http.get(`${base}/pom-submissions?schemeOrgId=${schemeOrgId}`, named(NAMES.get));
+  const afterAmend = call(NAMES.get, 'GET', `/pom-submissions?schemeOrgId=${schemeOrgId}`);
   verify(afterAmend, 200, 'GET after PATCH', 'GET after PATCH returns only the new version', (b) =>
     b.totalCount === 1 && b.items[0].id === amended.json().id);
   pause();
